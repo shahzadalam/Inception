@@ -1,1 +1,70 @@
-sdsd
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.applications import InceptionV3
+from tensorflow.keras import layers
+from tensorflow.keras import Model
+
+# Set up the paths to your training and validation datasets
+train_dir = '/path/to/training'
+validation_dir = '/path/to/validation'
+
+# Use data augmentation for the training dataset
+train_datagen = ImageDataGenerator(
+    rescale=1./255,
+    rotation_range=20,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    fill_mode='nearest'
+)
+
+# Validation data should not be augmented
+validation_datagen = ImageDataGenerator(rescale=1./255)
+
+# Set batch size
+batch_size = 32
+
+# Create the data generators
+train_generator = train_datagen.flow_from_directory(
+    train_dir,
+    target_size=(299, 299),  # InceptionV3 input size
+    batch_size=batch_size,
+    class_mode='categorical'  # adjust this based on your problem (binary or categorical)
+)
+
+validation_generator = validation_datagen.flow_from_directory(
+    validation_dir,
+    target_size=(299, 299),
+    batch_size=batch_size,
+    class_mode='categorical'
+)
+
+# Load the InceptionV3 model without the top classification layer
+base_model = InceptionV3(weights='imagenet', include_top=False, input_shape=(299, 299, 3))
+
+# Freeze the convolutional layers to prevent updating during training
+for layer in base_model.layers:
+    layer.trainable = False
+
+# Add your custom classification layers
+x = layers.Flatten()(base_model.output)
+x = layers.Dense(1024, activation='relu')(x)
+x = layers.Dropout(0.5)(x)
+x = layers.Dense(train_generator.num_classes, activation='softmax')(x)
+
+# Create the final model
+model = Model(base_model.input, x)
+
+# Compile the model
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Train the model
+history = model.fit(
+    train_generator,
+    steps_per_epoch=train_generator.samples // batch_size,
+    epochs=10,  # Adjust as needed
+    validation_data=validation_generator,
+    validation_steps=validation_generator.samples // batch_size
+)
